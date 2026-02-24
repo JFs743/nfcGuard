@@ -117,12 +117,68 @@ fun SchedulesScreen(
     onBack: () -> Unit
 ) {
     val appState by viewModel.appState.collectAsState()
+    val safeRegimeEnabled by viewModel.safeRegimeEnabled.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var editingSchedule by remember { mutableStateOf<Schedule?>(null) }
     var showDeleteDialog by remember { mutableStateOf<Schedule?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    // Safe Regime challenge state
+    var showSafeRegimeChallenge by remember { mutableStateOf(false) }
+    var challengeDescription by remember { mutableStateOf("") }
+    var pendingChallengeAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // Pending save from ScheduleEditorDialog (when challenge is needed on save)
+    var pendingSaveName by remember { mutableStateOf("") }
+    var pendingSaveTimeSlot by remember { mutableStateOf<TimeSlot?>(null) }
+    var pendingSaveLinkedModeIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    var pendingSaveHasEndTime by remember { mutableStateOf(false) }
+    var pendingSaveScheduleId by remember { mutableStateOf<String?>(null) } // null = create, non-null = update
+
+    /** Request a safe regime challenge. If safe regime is off or no modes active, runs immediately. */
+    fun requireChallengeOrRun(description: String, action: () -> Unit) {
+        if (safeRegimeEnabled && appState.activeModes.isNotEmpty()) {
+            challengeDescription = description
+            pendingChallengeAction = action
+            showSafeRegimeChallenge = true
+        } else {
+            action()
+        }
+    }
+
+    // Show challenge dialog
+    if (showSafeRegimeChallenge) {
+        SafeRegimeChallengeDialog(
+            actionDescription = challengeDescription,
+            onComplete = {
+                showSafeRegimeChallenge = false
+                pendingChallengeAction?.invoke()
+                pendingChallengeAction = null
+                // Also execute pending save if exists
+                val ts = pendingSaveTimeSlot
+                if (ts != null) {
+                    val id = pendingSaveScheduleId
+                    if (id != null) {
+                        viewModel.updateSchedule(id, pendingSaveName, ts, pendingSaveLinkedModeIds, pendingSaveHasEndTime)
+                    } else {
+                        viewModel.addSchedule(pendingSaveName, ts, pendingSaveLinkedModeIds, pendingSaveHasEndTime)
+                    }
+                    pendingSaveTimeSlot = null
+                    pendingSaveScheduleId = null
+                    editingSchedule = null
+                    showAddDialog = false
+                }
+            },
+            onCancel = {
+                showSafeRegimeChallenge = false
+                pendingChallengeAction = null
+                pendingSaveTimeSlot = null
+                pendingSaveScheduleId = null
+            }
+        )
+    }
 
     Scaffold(
         snackbarHost = {
@@ -229,8 +285,26 @@ fun SchedulesScreen(
                                         }
                                     }
                                 },
-                                onEdit = { editingSchedule = schedule },
-                                onDelete = { showDeleteDialog = schedule }
+                                onEdit = {
+                                    val isActive = getScheduleState(schedule, appState) == ScheduleState.ACTIVE
+                                    if (safeRegimeEnabled && isActive) {
+                                        requireChallengeOrRun("Editing an active schedule could be used to bypass the blocker.") {
+                                            editingSchedule = schedule
+                                        }
+                                    } else {
+                                        editingSchedule = schedule
+                                    }
+                                },
+                                onDelete = {
+                                    val isActive = getScheduleState(schedule, appState) == ScheduleState.ACTIVE
+                                    if (safeRegimeEnabled && isActive) {
+                                        requireChallengeOrRun("Deleting an active schedule could be used to bypass the blocker.") {
+                                            showDeleteDialog = schedule
+                                        }
+                                    } else {
+                                        showDeleteDialog = schedule
+                                    }
+                                }
                             )
                         }
 
@@ -266,11 +340,26 @@ fun SchedulesScreen(
     if (showAddDialog) {
         ScheduleEditorDialog(
             modes = appState.modes,
+            activeModeIds = appState.activeModes,
+            safeRegimeEnabled = safeRegimeEnabled,
             existingNames = appState.schedules.map { it.name },  // FIX #6
             onDismiss = { showAddDialog = false },
             onSave = { name, timeSlot, linkedModeIds, hasEndTime ->
-                viewModel.addSchedule(name, timeSlot, linkedModeIds, hasEndTime)
-                showAddDialog = false
+                val linksActiveMode = linkedModeIds.any { appState.activeModes.contains(it) }
+                if (safeRegimeEnabled && linksActiveMode) {
+                    // Store pending save and trigger challenge
+                    pendingSaveName = name
+                    pendingSaveTimeSlot = timeSlot
+                    pendingSaveLinkedModeIds = linkedModeIds
+                    pendingSaveHasEndTime = hasEndTime
+                    pendingSaveScheduleId = null
+                    challengeDescription = "Creating a schedule linked to active modes could be used to bypass the blocker."
+                    pendingChallengeAction = null
+                    showSafeRegimeChallenge = true
+                } else {
+                    viewModel.addSchedule(name, timeSlot, linkedModeIds, hasEndTime)
+                    showAddDialog = false
+                }
             }
         )
     }
@@ -279,11 +368,26 @@ fun SchedulesScreen(
         ScheduleEditorDialog(
             existingSchedule = schedule,
             modes = appState.modes,
+            activeModeIds = appState.activeModes,
+            safeRegimeEnabled = safeRegimeEnabled,
             existingNames = appState.schedules.filter { it.id != schedule.id }.map { it.name },  // FIX #6
             onDismiss = { editingSchedule = null },
             onSave = { name, timeSlot, linkedModeIds, hasEndTime ->
-                viewModel.updateSchedule(schedule.id, name, timeSlot, linkedModeIds, hasEndTime)
-                editingSchedule = null
+                val scheduleActive = getScheduleState(schedule, appState) == ScheduleState.ACTIVE
+                val linksActiveMode = linkedModeIds.any { appState.activeModes.contains(it) }
+                if (safeRegimeEnabled && (scheduleActive || linksActiveMode)) {
+                    pendingSaveName = name
+                    pendingSaveTimeSlot = timeSlot
+                    pendingSaveLinkedModeIds = linkedModeIds
+                    pendingSaveHasEndTime = hasEndTime
+                    pendingSaveScheduleId = schedule.id
+                    challengeDescription = "Modifying this schedule while modes are active could be used to bypass the blocker."
+                    pendingChallengeAction = null
+                    showSafeRegimeChallenge = true
+                } else {
+                    viewModel.updateSchedule(schedule.id, name, timeSlot, linkedModeIds, hasEndTime)
+                    editingSchedule = null
+                }
             }
         )
     }
@@ -609,6 +713,8 @@ fun ScheduleCard(
 fun ScheduleEditorDialog(
     existingSchedule: Schedule? = null,
     modes: List<Mode>,
+    activeModeIds: Set<String> = emptySet(),
+    safeRegimeEnabled: Boolean = false,
     existingNames: List<String> = emptyList(),  // FIX #6
     onDismiss: () -> Unit,
     onSave: (String, TimeSlot, List<String>, Boolean) -> Unit
@@ -955,6 +1061,31 @@ fun ScheduleEditorDialog(
                         Column {
                             Text("LINKED MODES", fontSize = 11.sp, color = GuardianTheme.TextSecondary, letterSpacing = 1.sp)
                             Spacer(Modifier.height(8.dp))
+
+                            // Warning when active modes are selected and safe regime is on
+                            val selectedActiveModes = selectedModeIds.filter { activeModeIds.contains(it) }
+                            if (safeRegimeEnabled && selectedActiveModes.isNotEmpty()) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                    shape = RoundedCornerShape(0.dp),
+                                    color = GuardianTheme.WarningBackground
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(Icons.Default.Shield, null, tint = GuardianTheme.Warning, modifier = Modifier.size(14.dp))
+                                        Text(
+                                            "Safe regime: saving will require a 5-min challenge",
+                                            fontSize = 9.sp,
+                                            color = GuardianTheme.Warning,
+                                            letterSpacing = 0.3.sp
+                                        )
+                                    }
+                                }
+                            }
+
                             if (modes.isEmpty()) {
                                 Text(
                                     "No modes created yet",
@@ -964,6 +1095,7 @@ fun ScheduleEditorDialog(
                                 )
                             } else {
                                 modes.forEach { mode ->
+                                    val isActive = activeModeIds.contains(mode.id)
                                     Surface(
                                         onClick = {
                                             selectedModeIds = if (selectedModeIds.contains(mode.id)) {
@@ -980,16 +1112,29 @@ fun ScheduleEditorDialog(
                                             modifier = Modifier.padding(12.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(
-                                                mode.name.uppercase(),
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (selectedModeIds.contains(mode.id)) Color.Black else Color.White,
-                                                letterSpacing = 1.sp,
-                                                modifier = Modifier.weight(1f)
-                                            )
+                                            Column(Modifier.weight(1f)) {
+                                                Text(
+                                                    mode.name.uppercase(),
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (selectedModeIds.contains(mode.id)) Color.Black else Color.White,
+                                                    letterSpacing = 1.sp
+                                                )
+                                                if (isActive) {
+                                                    Text(
+                                                        "CURRENTLY ACTIVE",
+                                                        fontSize = 8.sp,
+                                                        fontWeight = FontWeight.Black,
+                                                        color = if (selectedModeIds.contains(mode.id)) Color(0xFF666666) else Color(0xFFFFAA00),
+                                                        letterSpacing = 1.sp
+                                                    )
+                                                }
+                                            }
                                             if (selectedModeIds.contains(mode.id)) {
                                                 Icon(Icons.Default.Check, null, tint = Color.Black)
+                                            }
+                                            if (isActive && !selectedModeIds.contains(mode.id)) {
+                                                Icon(Icons.Default.Shield, null, tint = Color(0xFFFFAA00), modifier = Modifier.size(16.dp))
                                             }
                                         }
                                     }

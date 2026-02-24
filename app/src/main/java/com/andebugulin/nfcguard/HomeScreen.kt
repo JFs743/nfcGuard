@@ -45,10 +45,8 @@ fun HomeScreen(
     val context = LocalContext.current
 
     var showEmergencyDialog by remember { mutableStateOf(false) }
-    var showConfirmDialog by remember { mutableStateOf(false) }
+    var showEmergencyChallenge by remember { mutableStateOf(false) }
     var showTagSelectionDialog by remember { mutableStateOf(false) }
-    var confirmText by remember { mutableStateOf("") }
-    var countdown by remember { mutableStateOf(60) }
     var selectedTagsToDelete by remember { mutableStateOf(setOf<String>()) }
     var showSettingsDialog by remember { mutableStateOf(false) }
 
@@ -338,8 +336,8 @@ fun HomeScreen(
             onConfirm = {
                 showEmergencyDialog = false
                 if (appState.activeModes.isNotEmpty()) {
-                    // Modes active --” require countdown + confirmation
-                    showConfirmDialog = true
+                    // Modes active — require safe regime challenge
+                    showEmergencyChallenge = true
                 } else {
                     // No modes active --” skip safety gate, go straight to tag selection
                     showTagSelectionDialog = true
@@ -348,22 +346,15 @@ fun HomeScreen(
         )
     }
 
-    if (showConfirmDialog) {
-        EmergencyConfirmDialog(
-            confirmText = confirmText,
-            onConfirmTextChange = { confirmText = it },
-            countdown = countdown,
-            onCountdownTick = { countdown = it },
-            onDismiss = {
-                showConfirmDialog = false
-                confirmText = ""
-                countdown = 60
-            },
-            onConfirm = {
-                showConfirmDialog = false
+    if (showEmergencyChallenge) {
+        SafeRegimeChallengeDialog(
+            actionDescription = "Emergency reset will deactivate all modes and delete selected NFC tags. This could bypass the blocker.",
+            onComplete = {
+                showEmergencyChallenge = false
                 showTagSelectionDialog = true
-                confirmText = ""
-                countdown = 60
+            },
+            onCancel = {
+                showEmergencyChallenge = false
             }
         )
     }
@@ -556,137 +547,6 @@ fun EmergencyWarningDialog(
     )
 }
 
-@Composable
-fun EmergencyConfirmDialog(
-    confirmText: String,
-    onConfirmTextChange: (String) -> Unit,
-    countdown: Int,
-    onCountdownTick: (Int) -> Unit,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit
-) {
-    val scope = rememberCoroutineScope()
-
-    LaunchedEffect(countdown) {
-        if (countdown > 0) {
-            kotlinx.coroutines.delay(1000)
-            onCountdownTick(countdown - 1)
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = GuardianTheme.ButtonSecondary,
-        tonalElevation = 0.dp,
-        shape = RoundedCornerShape(0.dp),
-        modifier = Modifier.border(
-            width = GuardianTheme.DialogBorderWidth,
-            color = GuardianTheme.DialogBorderDelete,
-            shape = RoundedCornerShape(0.dp)
-        ),
-        title = {
-            Text(
-                "FINAL CONFIRMATION",
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp,
-                color = GuardianTheme.Error
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (countdown > 0) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(0.dp),
-                        color = GuardianTheme.BackgroundSurface
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                countdown.toString(),
-                                fontSize = 48.sp,
-                                fontWeight = FontWeight.Black,
-                                color = GuardianTheme.Error
-                            )
-                            Text(
-                                "Waiting...",
-                                fontSize = 11.sp,
-                                color = GuardianTheme.TextSecondary,
-                                letterSpacing = 1.sp
-                            )
-                        }
-                    }
-                } else {
-                    Text(
-                        "Type exactly:  RESET ALL DATA",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GuardianTheme.TextPrimary,
-                        letterSpacing = 0.5.sp
-                    )
-
-                    OutlinedTextField(
-                        value = confirmText,
-                        onValueChange = onConfirmTextChange,
-                        placeholder = {
-                            Text(
-                                "Type here...",
-                                fontSize = 12.sp,
-                                letterSpacing = 1.sp
-                            )
-                        },
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = GuardianTheme.BackgroundSurface,
-                            unfocusedContainerColor = GuardianTheme.BackgroundSurface,
-                            focusedIndicatorColor = if (confirmText == "RESET ALL DATA") GuardianTheme.Error else Color.White,
-                            unfocusedIndicatorColor = GuardianTheme.BorderSubtle,
-                            cursorColor = GuardianTheme.InputCursor,
-                            focusedTextColor = GuardianTheme.InputText,
-                            unfocusedTextColor = GuardianTheme.InputText
-                        ),
-                        shape = RoundedCornerShape(0.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-
-                    if (confirmText.isNotEmpty() && confirmText != "RESET ALL DATA") {
-                        Text(
-                            "Text doesn't match",
-                            fontSize = 11.sp,
-                            color = GuardianTheme.Error,
-                            letterSpacing = 0.5.sp
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = onConfirm,
-                enabled = countdown == 0 && confirmText == "RESET ALL DATA",
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = GuardianTheme.Error,
-                    disabledContentColor = Color(0xFF404040)
-                )
-            ) {
-                Text("NEXT", fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = Color(0xFF808080)
-                )
-            ) {
-                Text("CANCEL", letterSpacing = 1.sp)
-            }
-        },
-    )
-}
 
 @Composable
 fun TagSelectionDialog(
@@ -823,9 +683,7 @@ fun SettingsDialog(
     var showImportConfirm by remember { mutableStateOf(false) }
     var pendingImportData by remember { mutableStateOf<ConfigManager.ExportData?>(null) }
     var showExportFormatChooser by remember { mutableStateOf(false) }
-    var showImportSafetyGate by remember { mutableStateOf(false) }
-    var importCountdown by remember { mutableStateOf(60) }
-    var importConfirmText by remember { mutableStateOf("") }
+    var showImportChallenge by remember { mutableStateOf(false) }
 
     // Auto-refresh permissions when activity resumes + periodic poll
     // (Battery optimization dialog stays in-app, so ON_RESUME doesn't fire for it)
@@ -1068,6 +926,107 @@ fun SettingsDialog(
 
                 Spacer(Modifier.height(8.dp))
 
+                // ===== SAFE REGIME SECTION =====
+                Text(
+                    "SAFE REGIME",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    color = GuardianTheme.TextSecondary,
+                    letterSpacing = 2.sp
+                )
+
+                val safeRegimeEnabled by viewModel.safeRegimeEnabled.collectAsState()
+                var showSafeRegimeChallenge by remember { mutableStateOf(false) }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(0.dp),
+                    color = GuardianTheme.BackgroundSurface
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "ANTI-BYPASS PROTECTION",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GuardianTheme.TextPrimary,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                if (safeRegimeEnabled) "Actions that could bypass blocking require a 5-minute attention challenge"
+                                else "Disabled — all actions are unrestricted",
+                                fontSize = 9.sp,
+                                color = GuardianTheme.TextTertiary,
+                                letterSpacing = 0.3.sp
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Switch(
+                            checked = safeRegimeEnabled,
+                            onCheckedChange = { newValue ->
+                                if (newValue) {
+                                    // Turning ON is always allowed
+                                    viewModel.setSafeRegimeEnabled(true)
+                                } else {
+                                    // Turning OFF: require challenge if modes are active
+                                    if (appState.activeModes.isNotEmpty()) {
+                                        showSafeRegimeChallenge = true
+                                    } else {
+                                        viewModel.setSafeRegimeEnabled(false)
+                                    }
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.Black,
+                                checkedTrackColor = Color.White,
+                                uncheckedThumbColor = Color(0xFF666666),
+                                uncheckedTrackColor = Color(0xFF333333)
+                            )
+                        )
+                    }
+                }
+
+                if (safeRegimeEnabled) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(0.dp),
+                        color = GuardianTheme.WarningBackground
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.Shield, null, tint = GuardianTheme.Warning, modifier = Modifier.size(14.dp))
+                            Text(
+                                "Protected: schedule linking to active modes, editing/deleting active schedules, disabling safe regime",
+                                fontSize = 9.sp,
+                                color = Color(0xFF999966),
+                                letterSpacing = 0.3.sp
+                            )
+                        }
+                    }
+                }
+
+                if (showSafeRegimeChallenge) {
+                    SafeRegimeChallengeDialog(
+                        actionDescription = "You are trying to disable Safe Regime while modes are active. This could allow bypassing the blocker.",
+                        onComplete = {
+                            viewModel.setSafeRegimeEnabled(false)
+                            showSafeRegimeChallenge = false
+                        },
+                        onCancel = {
+                            showSafeRegimeChallenge = false
+                        }
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+
                 // ===== DATA SECTION =====
                 Text(
                     "DATA",
@@ -1100,9 +1059,7 @@ fun SettingsDialog(
                 Button(
                     onClick = {
                         if (appState.activeModes.isNotEmpty()) {
-                            importCountdown = 60
-                            importConfirmText = ""
-                            showImportSafetyGate = true
+                            showImportChallenge = true
                         } else {
                             importLauncher.launch(arrayOf("application/json", "application/x-yaml", "*/*"))
                         }
@@ -1249,139 +1206,17 @@ fun SettingsDialog(
         )
     }
 
-    // Import safety gate - countdown + RESET ALL DATA when modes are active
-    if (showImportSafetyGate) {
-        LaunchedEffect(importCountdown) {
-            if (importCountdown > 0) {
-                kotlinx.coroutines.delay(1000)
-                importCountdown--
+    // Import safety gate - SafeRegime challenge when modes are active
+    if (showImportChallenge) {
+        SafeRegimeChallengeDialog(
+            actionDescription = "Importing a config while modes are active could be used to bypass blocking. Verify your intent.",
+            onComplete = {
+                showImportChallenge = false
+                importLauncher.launch(arrayOf("application/json", "application/x-yaml", "*/*"))
+            },
+            onCancel = {
+                showImportChallenge = false
             }
-        }
-
-        AlertDialog(
-            onDismissRequest = {
-                showImportSafetyGate = false
-                importConfirmText = ""
-                importCountdown = 60
-            },
-            containerColor = GuardianTheme.ButtonSecondary,
-            tonalElevation = 0.dp,
-            shape = RoundedCornerShape(0.dp),
-            modifier = Modifier.border(
-                width = GuardianTheme.DialogBorderWidth,
-                color = GuardianTheme.DialogBorderDelete,
-                shape = RoundedCornerShape(0.dp)
-            ),
-            title = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(Icons.Default.Warning, null, tint = GuardianTheme.Error, modifier = Modifier.size(24.dp))
-                    Text("MODES ARE ACTIVE", fontWeight = FontWeight.Black, letterSpacing = 2.sp, color = GuardianTheme.Error)
-                }
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(0.dp),
-                        color = GuardianTheme.ErrorDark
-                    ) {
-                        Text(
-                            "Importing a config while modes are active could be used to bypass blocking. Verify your intent.",
-                            fontSize = 11.sp,
-                            color = Color(0xFFFF8888),
-                            letterSpacing = 0.5.sp,
-                            modifier = Modifier.padding(12.dp)
-                        )
-                    }
-
-                    if (importCountdown > 0) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(0.dp),
-                            color = GuardianTheme.BackgroundSurface
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    importCountdown.toString(),
-                                    fontSize = 48.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = GuardianTheme.Error
-                                )
-                                Text("Waiting...", fontSize = 11.sp, color = GuardianTheme.TextSecondary, letterSpacing = 1.sp)
-                            }
-                        }
-                    } else {
-                        Text(
-                            "Type exactly:  RESET ALL DATA",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = GuardianTheme.TextPrimary,
-                            letterSpacing = 0.5.sp
-                        )
-                        OutlinedTextField(
-                            value = importConfirmText,
-                            onValueChange = { importConfirmText = it },
-                            placeholder = { Text("Type here...", fontSize = 12.sp, letterSpacing = 1.sp) },
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = GuardianTheme.BackgroundSurface,
-                                unfocusedContainerColor = GuardianTheme.BackgroundSurface,
-                                focusedIndicatorColor = if (importConfirmText == "RESET ALL DATA") GuardianTheme.Error else Color.White,
-                                unfocusedIndicatorColor = GuardianTheme.BorderSubtle,
-                                cursorColor = GuardianTheme.InputCursor,
-                                focusedTextColor = GuardianTheme.InputText,
-                                unfocusedTextColor = GuardianTheme.InputText
-                            ),
-                            shape = RoundedCornerShape(0.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                        if (importConfirmText.isNotEmpty() && importConfirmText != "RESET ALL DATA") {
-                            Text(
-                                "Text doesn't match",
-                                fontSize = 11.sp,
-                                color = GuardianTheme.Error,
-                                letterSpacing = 0.5.sp
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showImportSafetyGate = false
-                        importConfirmText = ""
-                        importCountdown = 60
-                        importLauncher.launch(arrayOf("application/json", "application/x-yaml", "*/*"))
-                    },
-                    enabled = importCountdown == 0 && importConfirmText == "RESET ALL DATA",
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = GuardianTheme.Error,
-                        disabledContentColor = Color(0xFF404040)
-                    )
-                ) {
-                    Text("CONTINUE", fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showImportSafetyGate = false
-                        importConfirmText = ""
-                        importCountdown = 60
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF808080))
-                ) {
-                    Text("CANCEL", letterSpacing = 1.sp)
-                }
-            },
         )
     }
 

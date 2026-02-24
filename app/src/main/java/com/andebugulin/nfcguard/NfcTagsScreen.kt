@@ -29,9 +29,8 @@ fun NfcTagsScreen(
     var pendingTagId by remember { mutableStateOf<String?>(null) }
     var editingTag by remember { mutableStateOf<NfcTag?>(null) }
     var showDeleteDialog by remember { mutableStateOf<NfcTag?>(null) }
-    var showDeleteConfirmDialog by remember { mutableStateOf<NfcTag?>(null) }
-    var deleteConfirmText by remember { mutableStateOf("") }
-    var deleteCountdown by remember { mutableStateOf(60) }
+    var showDeleteChallenge by remember { mutableStateOf(false) }
+    var pendingDeleteTag by remember { mutableStateOf<NfcTag?>(null) }
 
     // Signal to MainActivity that we're registering — skip wrong-tag validation
     LaunchedEffect(showAddDialog) {
@@ -350,8 +349,8 @@ fun NfcTagsScreen(
                     onClick = {
                         if (hasActiveMode) {
                             showDeleteDialog = null
-                            showDeleteConfirmDialog = tag
-                            deleteCountdown = 60
+                            pendingDeleteTag = tag
+                            showDeleteChallenge = true
                         } else {
                             viewModel.deleteNfcTag(tag.id)
                             showDeleteDialog = null
@@ -383,148 +382,19 @@ fun NfcTagsScreen(
         )
     }
 
-    // Confirmation dialog for active tags (anti-cheat)
-    showDeleteConfirmDialog?.let { tag ->
-        val scope = rememberCoroutineScope()
-
-        LaunchedEffect(deleteCountdown) {
-            if (deleteCountdown > 0) {
-                kotlinx.coroutines.delay(1000)
-                deleteCountdown--
-            }
+    // Safe Regime challenge for deleting tags linked to active modes
+    if (showDeleteChallenge && pendingDeleteTag != null) {
+        SafeRegimeChallengeDialog(
+            actionDescription = "Deleting NFC tag ${pendingDeleteTag!!.name} while modes are active could make it impossible to deactivate them normally.",
+        onComplete = {
+            pendingDeleteTag?.let { viewModel.deleteNfcTag(it.id) }
+            showDeleteChallenge = false
+            pendingDeleteTag = null
+        },
+        onCancel = {
+            showDeleteChallenge = false
+            pendingDeleteTag = null
         }
-
-        AlertDialog(
-            onDismissRequest = {
-                showDeleteConfirmDialog = null
-                deleteConfirmText = ""
-                deleteCountdown = 60
-            },
-            containerColor = GuardianTheme.ButtonSecondary,
-            tonalElevation = 0.dp,
-            shape = RoundedCornerShape(0.dp),
-            modifier = Modifier.border(
-                width = GuardianTheme.DialogBorderWidth,
-                color = GuardianTheme.DialogBorderDelete,
-                shape = RoundedCornerShape(0.dp)
-            ),
-            title = {
-                Text(
-                    "FINAL CONFIRMATION",
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp,
-                    color = GuardianTheme.Error
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    if (deleteCountdown > 0) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(0.dp),
-                            color = GuardianTheme.BackgroundSurface
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    deleteCountdown.toString(),
-                                    fontSize = 48.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = GuardianTheme.Error
-                                )
-                                Text(
-                                    "Waiting...",
-                                    fontSize = 11.sp,
-                                    color = GuardianTheme.TextSecondary,
-                                    letterSpacing = 1.sp
-                                )
-                            }
-                        }
-                    } else {
-                        Text(
-                            "Type exactly:  DELETE TAG",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = GuardianTheme.TextPrimary,
-                            letterSpacing = 0.5.sp
-                        )
-
-                        OutlinedTextField(
-                            value = deleteConfirmText,
-                            onValueChange = { deleteConfirmText = it },
-                            placeholder = {
-                                Text(
-                                    "Type here...",
-                                    fontSize = 12.sp,
-                                    letterSpacing = 1.sp
-                                )
-                            },
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = GuardianTheme.BackgroundSurface,
-                                unfocusedContainerColor = GuardianTheme.BackgroundSurface,
-                                focusedIndicatorColor = if (deleteConfirmText == "DELETE TAG") GuardianTheme.Error else Color.White,
-                                unfocusedIndicatorColor = GuardianTheme.BorderSubtle,
-                                cursorColor = GuardianTheme.InputCursor,
-                                focusedTextColor = GuardianTheme.InputText,
-                                unfocusedTextColor = GuardianTheme.InputText
-                            ),
-                            shape = RoundedCornerShape(0.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-
-                        if (deleteConfirmText.isNotEmpty() && deleteConfirmText != "DELETE TAG") {
-                            Text(
-                                "Text doesn't match",
-                                fontSize = 11.sp,
-                                color = GuardianTheme.Error,
-                                letterSpacing = 0.5.sp
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteNfcTag(tag.id)
-                        showDeleteConfirmDialog = null
-                        deleteConfirmText = ""
-                        deleteCountdown = 60
-                    },
-                    enabled = deleteCountdown == 0 && deleteConfirmText == "DELETE TAG",
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = GuardianTheme.Error,
-                        contentColor = GuardianTheme.ButtonSecondaryText,
-                        disabledContainerColor = Color.Black,
-                        disabledContentColor = Color(0xFF808080)
-                    ),
-                    shape = RoundedCornerShape(0.dp)
-                ) {
-                    Text(
-                        "DELETE NOW",
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.sp
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteConfirmDialog = null
-                        deleteConfirmText = ""
-                        deleteCountdown = 60
-                    },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = Color(0xFF808080)
-                    )
-                ) {
-                    Text("CANCEL", letterSpacing = 1.sp)
-                }
-            },
         )
     }
 }

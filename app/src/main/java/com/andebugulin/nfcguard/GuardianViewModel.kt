@@ -88,6 +88,10 @@ class GuardianViewModel : ViewModel() {
     private val _appState = MutableStateFlow(AppState())
     val appState: StateFlow<AppState> = _appState
 
+    /** Safe Regime — stored separately from AppState to prevent bypass via config import */
+    private val _safeRegimeEnabled = MutableStateFlow(true)
+    val safeRegimeEnabled: StateFlow<Boolean> = _safeRegimeEnabled
+
     private lateinit var prefs: SharedPreferences
     private lateinit var context: Context
     private val json = Json { ignoreUnknownKeys = true }
@@ -103,6 +107,9 @@ class GuardianViewModel : ViewModel() {
         prefs = context.getSharedPreferences("guardian_prefs", Context.MODE_PRIVATE)
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         loadState()
+
+        // Load safe regime preference (default: enabled)
+        _safeRegimeEnabled.value = prefs.getBoolean("safe_regime_enabled", true)
 
         // Don't spam service starts - only ensure it's running
         ensureServiceRunning()
@@ -125,6 +132,11 @@ class GuardianViewModel : ViewModel() {
                 updateBlockerService()
             }
         }
+    }
+
+    fun setSafeRegimeEnabled(enabled: Boolean) {
+        _safeRegimeEnabled.value = enabled
+        prefs.edit().putBoolean("safe_regime_enabled", enabled).apply()
     }
 
     private fun loadState() {
