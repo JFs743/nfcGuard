@@ -22,13 +22,13 @@ import kotlinx.coroutines.delay
 /**
  * Safe Regime Challenge Dialog.
  *
- * Requires the user to remain attentive for 5 minutes before allowing
+ * Requires the user to remain attentive for 1.5 minutes before allowing
  * a potentially bypass-enabling action. Every 15 seconds a button appears
  * that the user must press within 5 seconds, otherwise the challenge
  * fails and the action is cancelled.
  *
  * Design rationale: an impulsive user (e.g. during an addiction craving)
- * is unlikely to stay focused for 5 solid minutes, making it very hard
+ * is unlikely to stay focused for 1.5 solid minutes, making it very hard
  * to bypass the blocker in a moment of weakness.
  */
 @Composable
@@ -37,8 +37,8 @@ fun SafeRegimeChallengeDialog(
     onComplete: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val totalDurationSeconds = 150 // 2.5 minutes
-    val waitPhaseSeconds = 10     // seconds of passive waiting per cycle
+    val totalDurationSeconds = 90 // 1.5 minutes
+    val waitPhaseSeconds = 15     // seconds of passive waiting per cycle
     val checkPhaseSeconds = 5     // seconds the user has to press
 
     var totalSecondsLeft by remember { mutableIntStateOf(totalDurationSeconds) }

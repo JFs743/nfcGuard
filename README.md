@@ -73,14 +73,20 @@ Accessible via the gear icon on the home screen:
   - **Import** with two strategies: **Replace** (overwrite everything) or **Merge** (add non-duplicate items)
 - **Pause App reminder** — quick link to disable Android's "Pause app if unused" setting
 
-### Emergency Reset
+### Emergency Reset & Cheating Prevention
 
 If you lose your NFC tag:
 
 1. Tap the delete icon on the home screen
-2. Complete the safety flow (60-second cooldown + confirmation text)
+2. Complete the safety flow
 3. Select which tags you lost
 4. All modes are deactivated and selected tags are removed — your configurations stay intact
+
+# KEEP IN MIND:
+
+- There are two regimes of operation: with protection (by default) and without
+- If you try to bypass, change, edit, delete active modes somehow or schedules/NFCs related to active modes, the app will force you into going through the safety flow, where during 1.5 minutes you will have to wait, plus every 10 seconds you will be asked to tap on your screen, in order to make sure that the action is intentional!
+- The safety regime can be turned off in the settings, but I personally don't recommend doing it.
 
 ## Technical Details
 
