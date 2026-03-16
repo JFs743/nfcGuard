@@ -393,6 +393,159 @@ fun InfoScreen(
                 }
 
                 item {
+                    Surface(
+                        shape = RoundedCornerShape(0.dp),
+                        color = GuardianTheme.BackgroundSurface
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                "HOW BLOCKING WORKS",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GuardianTheme.TextSecondary,
+                                letterSpacing = 1.sp
+                            )
+
+                            Text(
+                                "Guardian has two blocking methods that switch automatically based on your setup:",
+                                fontSize = 12.sp,
+                                color = GuardianTheme.TextPrimary,
+                                letterSpacing = 0.5.sp,
+                                lineHeight = 18.sp
+                            )
+
+                            // Force-close section
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(0.dp),
+                                color = GuardianTheme.BackgroundPrimary
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Shield,
+                                            contentDescription = null,
+                                            tint = GuardianTheme.TextPrimary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            "FORCE-CLOSE MODE",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = GuardianTheme.TextPrimary,
+                                            letterSpacing = 1.sp
+                                        )
+                                    }
+                                    Text(
+                                        "When you open a blocked app, Guardian immediately closes it and sends you home. You'll see a quick notification. This is the most reliable method \u2014 it works consistently on all devices including Samsung and Pixel.",
+                                        fontSize = 11.sp,
+                                        color = GuardianTheme.TextSecondary,
+                                        letterSpacing = 0.3.sp,
+                                        lineHeight = 16.sp
+                                    )
+                                    Text(
+                                        "Requires: Accessibility Service enabled",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = GuardianTheme.TextTertiary,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                }
+                            }
+
+                            // Overlay section
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(0.dp),
+                                color = GuardianTheme.BackgroundPrimary
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Fullscreen,
+                                            contentDescription = null,
+                                            tint = GuardianTheme.TextPrimary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            "OVERLAY MODE",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = GuardianTheme.TextPrimary,
+                                            letterSpacing = 1.sp
+                                        )
+                                    }
+                                    Text(
+                                        "When you open a blocked app, a full-screen black overlay covers the screen with a message to tap NFC to unlock. This is the fallback method when the Accessibility Service is not enabled.",
+                                        fontSize = 11.sp,
+                                        color = GuardianTheme.TextSecondary,
+                                        letterSpacing = 0.3.sp,
+                                        lineHeight = 16.sp
+                                    )
+                                    Text(
+                                        "No extra permissions needed",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = GuardianTheme.TextTertiary,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                }
+                            }
+
+                            // Recommendation
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(0.dp),
+                                color = GuardianTheme.WarningBackground
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = GuardianTheme.Warning,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        "We recommend enabling the Accessibility Service for the best experience. Force-close mode is faster, more reliable, and works on devices where the overlay may flicker or disappear. You can enable it in Settings \u2192 Accessibility.",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF999966),
+                                        letterSpacing = 0.3.sp,
+                                        lineHeight = 15.sp
+                                    )
+                                }
+                            }
+
+                            Text(
+                                "Guardian picks the right method automatically \u2014 you can see which one is active in Settings under \"Blocking Method\".",
+                                fontSize = 11.sp,
+                                color = GuardianTheme.TextTertiary,
+                                letterSpacing = 0.3.sp,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                }
+
+                item {
                     InfoSection(
                         title = "FEATURES",
                         items = listOf(
@@ -400,6 +553,8 @@ fun InfoScreen(
                             "\u2022 ALLOW MODE \u2014 Block everything except selected apps",
                             "\u2022 NFC LOCKS \u2014 Require specific tags to unlock modes",
                             "\u2022 SCHEDULES \u2014 Auto-activate modes by day/time",
+                            "\u2022 FORCE-CLOSE \u2014 Instantly kills blocked apps (with Accessibility)",
+                            "\u2022 OVERLAY FALLBACK \u2014 Full-screen blocker when Accessibility is off",
                             "\u2022 PERSISTENT \u2014 Survives reboots and app restarts"
                         )
                     )
@@ -409,10 +564,12 @@ fun InfoScreen(
                     InfoSection(
                         title = "TIPS",
                         items = listOf(
+                            "\u2022 Enable Accessibility Service for the most reliable blocking",
                             "\u2022 Keep NFC tags in hard-to-reach places",
                             "\u2022 Use schedules for work/sleep hours",
                             "\u2022 Combine modes for maximum protection",
-                            "\u2022 Check Settings to disable 'Pause app if unused'"
+                            "\u2022 Check Settings to disable 'Pause app if unused'",
+                            "\u2022 On Xiaomi/Samsung \u2014 enable Autostart and disable battery optimization"
                         )
                     )
                 }

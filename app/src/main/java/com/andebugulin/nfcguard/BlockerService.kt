@@ -34,6 +34,10 @@ class BlockerService : Service() {
     private var lastCheckedApp: String? = null
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    // Force-close dedup: prevent spamming home+kill every 500ms on stale accessibility data
+    private var lastForceClosedApp: String? = null
+    private var lastForceCloseTime: Long = 0L
+
     // Thread-safe overlay state management - CRITICAL FIX
     private val overlayMutex = Mutex()
     private var isOverlayShowing = false
@@ -144,6 +148,7 @@ class BlockerService : Service() {
     companion object {
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "guardian_channel"
+        private const val FORCE_CLOSE_COOLDOWN_MS = 3000L // 3s cooldown between force-closes of same app
         private var isRunning = false
 
         // CRITICAL: Apps that must NEVER be blocked
@@ -258,6 +263,7 @@ class BlockerService : Service() {
         // evaluate with stale blocklist data during mode transitions.
         if (activeModeIds.isEmpty() && blockedApps.isEmpty()) {
             // Still hide overlay in case one is lingering from the race
+            // (overlay can be showing even in kill mode if accessibility was off → fallback)
             hideOverlaySafe()
             return
         }
@@ -299,15 +305,48 @@ class BlockerService : Service() {
         lastCheckedApp = currentApp
 
         if (shouldBlock) {
-            // showOverlaySafe() is already a no-op when overlay is showing (isOverlayShowing guard
-            // inside the mutex), so calling it every tick is safe and avoids any race condition
-            // where lastCheckedApp was poisoned by the previous monitoring job's last tick.
             android.util.Log.w("BLOCKER_SERVICE", "---- BLOCKING APP: $currentApp")
-            AppLogger.log("SERVICE", "BLOCKING: $currentApp (mode=$blockMode, inList=${blockedApps.contains(currentApp)})")
-            showOverlaySafe()
+            // Auto-detect blocking method:
+            // - Accessibility ON  → force-close (send home + kill). Overlay has bugs
+            //   with accessibility (stuck-on-home on MIUI, disappearing on Samsung).
+            // - Accessibility OFF → overlay. Works reliably without accessibility on
+            //   most devices. Force-close needs accessibility for the HOME action.
+            val useForceClose = ForegroundDetectorService.isRunning
+            AppLogger.log("SERVICE", "BLOCKING: $currentApp (mode=$blockMode, inList=${blockedApps.contains(currentApp)}, forceClose=$useForceClose)")
+            if (useForceClose) {
+                // Cooldown: don't spam force-close every 500ms on stale accessibility data.
+                // After the first force-close, the home intent is already sent — repeated
+                // calls just spam toasts and HOME intents until accessibility catches up (~3-4s).
+                val now = System.currentTimeMillis()
+                val isSameApp = lastForceClosedApp == currentApp
+                val isInCooldown = isSameApp && (now - lastForceCloseTime) < FORCE_CLOSE_COOLDOWN_MS
+
+                if (isInCooldown) {
+                    android.util.Log.d("BLOCKER_SERVICE", "---- Force-close cooldown active for $currentApp, skipping")
+                } else {
+                    forceCloseApp(currentApp)
+                    lastForceClosedApp = currentApp
+                    lastForceCloseTime = now
+                }
+            } else {
+                showOverlaySafe()
+            }
         } else {
-            // hideOverlaySafe() is a no-op when overlay is not showing — no performance cost.
             android.util.Log.d("BLOCKER_SERVICE", "--- ALLOWING APP: $currentApp")
+            // Only reset force-close state when user is in a REAL app (not launcher
+            // or system). The launcher is transitional — HOME action's animation can
+            // cause spurious a11y events for the blocked app. If we reset cooldown
+            // on launcher, the next spurious event triggers another force-close,
+            // kicking the user home from whatever app they opened next.
+            if (lastForceClosedApp != null
+                && !isSystemLauncher(currentApp)
+                && !isCriticalSystemApp(currentApp)
+                && currentApp != packageName) {
+                android.util.Log.d("BLOCKER_SERVICE", "---- Cooldown reset: user in real app $currentApp")
+                lastForceClosedApp = null
+                lastForceCloseTime = 0L
+            }
+            // Always attempt to hide overlay — it might be showing from a fallback
             hideOverlaySafe()
         }
     }
@@ -350,16 +389,6 @@ class BlockerService : Service() {
             if (accessibilityPkg != null && age < 5000) {
                 android.util.Log.v("BLOCKER_SERVICE",
                     "   --- Accessibility source: $accessibilityPkg (${age}ms ago)")
-                return accessibilityPkg
-            }
-
-            // Stale accessibility data BUT overlay is showing — trust last value.
-            // This prevents UsageStatsManager (which reports launcher incorrectly
-            // on Pixel after recents) from hiding the overlay prematurely.
-            // The overlay will hide when accessibility fires a NEW different package.
-            if (accessibilityPkg != null && isOverlayShowing && activeModeIds.isNotEmpty()) {
-                android.util.Log.v("BLOCKER_SERVICE",
-                    "   --- Accessibility HELD (overlay showing): $accessibilityPkg (${age}ms ago)")
                 return accessibilityPkg
             }
         }
@@ -416,6 +445,65 @@ class BlockerService : Service() {
             time
         )
         return stats?.maxByOrNull { it.lastTimeUsed }?.packageName
+    }
+
+    /**
+     * Force-close a blocked app: send user to home screen, kill the app's
+     * background processes, and show a brief toast. This is far more reliable
+     * than the overlay approach on devices where the overlay disappears
+     * (Samsung, some MIUI ROMs).
+     *
+     * NOTE: killBackgroundProcesses() only kills bg services, not the activity.
+     * The app may remain in recents. If the user reopens it, the next polling
+     * tick (after cooldown expires) will force-close again.
+     */
+    private fun forceCloseApp(packageName: String) {
+        android.util.Log.d("BLOCKER_SERVICE", "---- FORCE-CLOSING: $packageName")
+        AppLogger.log("SERVICE", "FORCE-CLOSE: $packageName")
+
+        // 1. Send user to home screen — prefer AccessibilityService (bypasses MIUI
+        //    background-activity-start restrictions), fall back to HOME intent.
+        var sentHome = false
+        if (ForegroundDetectorService.isRunning) {
+            sentHome = ForegroundDetectorService.goHome()
+            if (sentHome) {
+                android.util.Log.d("BLOCKER_SERVICE", "---- Sent HOME via AccessibilityService")
+            }
+        }
+        if (!sentHome) {
+            try {
+                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(homeIntent)
+                android.util.Log.d("BLOCKER_SERVICE", "---- Sent HOME via Intent fallback")
+            } catch (e: Exception) {
+                android.util.Log.e("BLOCKER_SERVICE", "Failed to launch home: ${e.message}")
+            }
+        }
+
+        // 2. Kill the blocked app's background processes
+        try {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            am.killBackgroundProcesses(packageName)
+            android.util.Log.d("BLOCKER_SERVICE", "---- Killed background processes: $packageName")
+        } catch (e: Exception) {
+            android.util.Log.e("BLOCKER_SERVICE", "Failed to kill $packageName: ${e.message}")
+        }
+
+        // 3. Show a brief toast every time a blocked app is force-closed
+        mainHandler.post {
+            try {
+                android.widget.Toast.makeText(
+                    this@BlockerService,
+                    "BLOCKED — go to nfcGuard & tap NFC tag to unlock",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            } catch (e: Exception) {
+                android.util.Log.e("BLOCKER_SERVICE", "Toast failed: ${e.message}")
+            }
+        }
     }
 
     // CRITICAL FIX: Thread-safe overlay showing with mutex

@@ -31,6 +31,7 @@ class ForegroundDetectorService : AccessibilityService() {
             flags = 0
         }
         serviceInfo = info
+        instance = this
         isRunning = true
         android.util.Log.d("FG_DETECTOR", "ForegroundDetectorService connected")
         AppLogger.log("SERVICE", "ForegroundDetectorService connected")
@@ -40,12 +41,14 @@ class ForegroundDetectorService : AccessibilityService() {
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = event.packageName?.toString() ?: return
             // Ignore system UI overlays (keyboard, status bar, etc.)
-// Ignore system UI overlays (keyboard, status bar, etc.)
             if (pkg == "com.android.systemui") return
-            // Ignore our own overlay — it triggers TYPE_WINDOW_STATE_CHANGED
-            // when shown, which would make BlockerService think the user opened
-            // Guardian and hide the overlay immediately.
-            if (pkg == "com.andebugulin.nfcguard") return
+            // NOTE: We intentionally do NOT filter our own package here.
+            // BlockerService.checkCurrentApp() already has `currentApp == packageName → ALLOW`.
+            // Filtering here would cause lastDetectedPackage to go stale when the user
+            // is inside Guardian, eventually falling through to UsageStatsManager which
+            // can return a previously-blocked app → spurious force-close.
+            // The old overlay concern (overlay window triggering TYPE_WINDOW_STATE_CHANGED)
+            // is moot: when accessibility is ON, we use force-close mode (no overlay).
             lastDetectedPackage = pkg
             lastDetectedTime = System.currentTimeMillis()
         }
@@ -57,6 +60,7 @@ class ForegroundDetectorService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        instance = null
         isRunning = false
         android.util.Log.d("FG_DETECTOR", "ForegroundDetectorService destroyed")
     }
@@ -73,6 +77,25 @@ class ForegroundDetectorService : AccessibilityService() {
         @Volatile
         var isRunning: Boolean = false
             private set
+
+        @Volatile
+        private var instance: ForegroundDetectorService? = null
+
+        /**
+         * Use AccessibilityService's performGlobalAction to send user HOME.
+         * More reliable than launching a HOME Intent from a background service,
+         * especially on MIUI/HyperOS which blocks background activity starts.
+         *
+         * Returns true if the action was dispatched, false if service unavailable.
+         */
+        fun goHome(): Boolean {
+            return try {
+                instance?.performGlobalAction(GLOBAL_ACTION_HOME) ?: false
+            } catch (e: Exception) {
+                android.util.Log.e("FG_DETECTOR", "goHome failed: ${e.message}")
+                false
+            }
+        }
 
         /**
          * Check if the accessibility service is enabled in system settings.

@@ -1053,6 +1053,79 @@ fun SettingsDialog(
                     )
                 }
 
+                Spacer(Modifier.height(12.dp))
+
+                // ===== BLOCKING METHOD SECTION =====
+                Text(
+                    "BLOCKING METHOD",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    color = GuardianTheme.TextSecondary,
+                    letterSpacing = 2.sp
+                )
+
+                val accessibilityOn = remember(permRefreshKey) {
+                    ForegroundDetectorService.isEnabled(context)
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(0.dp),
+                    color = GuardianTheme.BackgroundSurface
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                if (accessibilityOn) "FORCE-CLOSE MODE" else "OVERLAY MODE",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GuardianTheme.TextPrimary,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                if (accessibilityOn) "Blocked apps are force-closed instantly"
+                                else "Blocked apps show a full-screen overlay",
+                                fontSize = 9.sp,
+                                color = GuardianTheme.TextTertiary,
+                                letterSpacing = 0.3.sp
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "AUTO",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GuardianTheme.TextSecondary,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(0.dp),
+                    color = GuardianTheme.WarningBackground
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.Info, null, tint = GuardianTheme.Warning, modifier = Modifier.size(14.dp))
+                        Text(
+                            if (accessibilityOn) "Accessibility ON — force-close avoids overlay conflicts on Samsung/Pixel"
+                            else "Accessibility OFF — overlay mode active. Enable accessibility for force-close",
+                            fontSize = 9.sp,
+                            color = Color(0xFF999966),
+                            letterSpacing = 0.3.sp
+                        )
+                    }
+                }
+
                 Spacer(Modifier.height(8.dp))
 
                 // ===== DATA SECTION =====
