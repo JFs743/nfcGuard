@@ -158,7 +158,7 @@ footer {
 <div class="content">
   <div class="label">Legal</div>
   <h1>PRIVACY POLICY</h1>
-  <div class="updated">Last updated: February 2026</div>
+  <div class="updated">Last updated: March 2026</div>
 
   <h2>Overview</h2>
   <p>nfcGuard is a digital wellbeing app that blocks access to distracting applications on your Android device. This policy explains what data nfcGuard accesses and how it is handled.</p>
@@ -180,6 +180,7 @@ footer {
   <h2>Permissions</h2>
   <table>
     <tr><th>Permission</th><th>Purpose</th></tr>
+    <tr><td><strong>Accessibility Service</strong></td><td>Reliably detect which app is currently in the foreground on devices where UsageStatsManager is insufficient (see detailed disclosure below)</td></tr>
     <tr><td><strong>Usage Access</strong></td><td>Detect which app is currently in the foreground to determine if it should be blocked</td></tr>
     <tr><td><strong>Display Over Apps</strong></td><td>Show a full-screen overlay when a blocked app is opened</td></tr>
     <tr><td><strong>Battery Optimization Exemption</strong></td><td>Ensure the blocking service runs reliably in the background</td></tr>
@@ -189,6 +190,24 @@ footer {
     <tr><td><strong>Exact Alarm</strong></td><td>Fire schedule start/end events at precise times</td></tr>
   </table>
   <p>nfcGuard does <strong>not</strong> request internet access for its own functionality. The INTERNET permission in the manifest is inherited from dependencies and is not actively used by the app.</p>
+
+  <h2>Accessibility Service (AccessibilityService API) Disclosure</h2>
+  <p>nfcGuard uses the Android AccessibilityService API <strong>solely</strong> to detect which application is currently in the foreground. This is required because the standard UsageStatsManager API does not reliably report foreground app transitions on certain devices, including Google Pixel and Samsung Galaxy phones.</p>
+  <p><strong>What the Accessibility Service does:</strong></p>
+  <table>
+    <tr><td>Listens for <strong>TYPE_WINDOW_STATE_CHANGED</strong> events</td><td>To detect when the user switches to a different app</td></tr>
+    <tr><td>Stores the <strong>package name</strong> of the foreground app</td><td>To determine whether the current app should be blocked based on the user's configured modes</td></tr>
+  </table>
+  <p><strong>What the Accessibility Service does NOT do:</strong></p>
+  <table>
+    <tr><td>Does <strong>not</strong> read screen content, text fields, or UI elements</td></tr>
+    <tr><td>Does <strong>not</strong> read or intercept user input, passwords, or keystrokes</td></tr>
+    <tr><td>Does <strong>not</strong> access, collect, or transmit any personal or sensitive user data</td></tr>
+    <tr><td>Does <strong>not</strong> perform any actions on behalf of the user</td></tr>
+    <tr><td>Does <strong>not</strong> interact with any other app's interface</td></tr>
+    <tr><td>Does <strong>not</strong> send any data over the network</td></tr>
+  </table>
+  <p>The Accessibility Service runs with the minimum required configuration: <strong>flags = 0</strong> (no content access flags enabled), feedback type set to FEEDBACK_GENERIC, and the only event type monitored is TYPE_WINDOW_STATE_CHANGED. The service exists exclusively to support nfcGuard's core app-blocking functionality and is not used for any other purpose.</p>
 
   <h2>Third-Party Services</h2>
   <p>nfcGuard does not integrate any third-party services, SDKs, analytics platforms, or advertising networks.</p>
