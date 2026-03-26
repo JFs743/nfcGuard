@@ -131,7 +131,7 @@ fun ModesScreen(
                                 isManual = appState.manuallyActivatedModes.contains(mode.id),
                                 timedUntil = appState.timedModeDeactivations[mode.id],
                                 now = now,
-                                nfcTag = appState.nfcTags.find { it.id == mode.nfcTagId },
+                                nfcTags = appState.nfcTags.filter { mode.effectiveNfcTagIds.contains(it.id) },
                                 onActivate = {
                                     showActivationOptionsDialog = mode
                                 },
@@ -353,11 +353,11 @@ fun ModesScreen(
                 availableNfcTags = appState.nfcTags,
                 allModes = appState.modes,  // FIX #8: pass all modes for NFC usage indicator
                 onBack = { selectedMode = null },
-                onSave = { apps, blockMode, nfcTagId ->
+                onSave = { apps, blockMode, nfcTagIds ->
                     if (appState.modes.any { it.id == mode.id }) {
-                        viewModel.updateMode(mode.id, mode.name, apps, blockMode, nfcTagId)
+                        viewModel.updateMode(mode.id, mode.name, apps, blockMode, nfcTagIds)
                     } else {
-                        viewModel.addMode(mode.name, apps, blockMode, nfcTagId)
+                        viewModel.addMode(mode.name, apps, blockMode, nfcTagIds)
                     }
                     selectedMode = null
                 }
@@ -373,7 +373,7 @@ fun ModeCard(
     isManual: Boolean = false,
     timedUntil: Long? = null,
     now: Long = System.currentTimeMillis(),
-    nfcTag: NfcTag?,
+    nfcTags: List<NfcTag>,
     onActivate: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
@@ -400,7 +400,7 @@ fun ModeCard(
                         color = if (isActive) GuardianTheme.TextTertiary else GuardianTheme.TextTertiary,
                         letterSpacing = 1.sp
                     )
-                    if (nfcTag != null) {
+                    if (nfcTags.isNotEmpty()) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -412,7 +412,7 @@ fun ModeCard(
                                 tint = if (isActive) GuardianTheme.TextTertiary else GuardianTheme.TextTertiary
                             )
                             Text(
-                                "LINKED TO: ${nfcTag.name.uppercase()}",
+                                "LINKED TO: ${nfcTags.joinToString(", ") { it.name.uppercase() }}",
                                 fontSize = 10.sp,
                                 color = if (isActive) GuardianTheme.TextTertiary else GuardianTheme.TextTertiary,
                                 letterSpacing = 1.sp

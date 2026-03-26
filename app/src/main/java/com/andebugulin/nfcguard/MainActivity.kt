@@ -126,10 +126,10 @@ class MainActivity : ComponentActivity() {
 
                         // Check if any active mode requires this specific tag
                         val activeModes = appState.modes.filter { appState.activeModes.contains(it.id) }
-                        val hasNfcLockedMode = activeModes.any { it.nfcTagId != null }
+                        val hasNfcLockedMode = activeModes.any { it.effectiveNfcTagIds.isNotEmpty() }
 
                         if (hasNfcLockedMode && !nfcRegistrationMode.value) {
-                            val validTag = activeModes.any { it.nfcTagId == tagId || it.nfcTagId == null }
+                            val validTag = activeModes.any { it.effectiveNfcTagIds.contains(tagId) || it.effectiveNfcTagIds.isEmpty() }
                             if (!validTag && appState.activeModes.isNotEmpty()) {
                                 // Wrong tag scanned!
                                 AppLogger.log("NFC", "WRONG TAG for active modes (tag=$tagId, activeModes=${appState.activeModes})")

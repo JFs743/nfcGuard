@@ -40,8 +40,16 @@ data class Mode(
     val name: String,
     val blockedApps: List<String>,
     val blockMode: BlockMode = BlockMode.BLOCK_SELECTED,
-    val nfcTagId: String? = null
-)
+    @Deprecated("Use nfcTagIds instead. Kept for migration from older versions.")
+    val nfcTagId: String? = null,
+    val nfcTagIds: List<String> = emptyList()
+) {
+    /** Resolved tag list: migrates legacy single-tag field automatically. */
+    val effectiveNfcTagIds: List<String>
+        get() = if (nfcTagIds.isNotEmpty()) nfcTagIds
+        else if (@Suppress("DEPRECATION") nfcTagId != null) listOf(@Suppress("DEPRECATION") nfcTagId!!)
+        else emptyList()
+}
 
 @Serializable
 data class Schedule(
@@ -206,14 +214,14 @@ class GuardianViewModel : ViewModel() {
         }
     }
 
-    fun addMode(name: String, blockedApps: List<String>, blockMode: BlockMode = BlockMode.BLOCK_SELECTED, nfcTagId: String? = null) {
+    fun addMode(name: String, blockedApps: List<String>, blockMode: BlockMode = BlockMode.BLOCK_SELECTED, nfcTagIds: List<String> = emptyList()) {
         viewModelScope.launch {
             val newMode = Mode(
                 id = java.util.UUID.randomUUID().toString(),
                 name = name,
                 blockedApps = blockedApps,
                 blockMode = blockMode,
-                nfcTagId = nfcTagId
+                nfcTagIds = nfcTagIds
             )
             _appState.value = _appState.value.copy(
                 modes = _appState.value.modes + newMode
@@ -222,7 +230,7 @@ class GuardianViewModel : ViewModel() {
         }
     }
 
-    fun updateMode(id: String, name: String, blockedApps: List<String>, blockMode: BlockMode, nfcTagId: String?) {
+    fun updateMode(id: String, name: String, blockedApps: List<String>, blockMode: BlockMode, nfcTagIds: List<String>) {
         viewModelScope.launch {
             _appState.value = _appState.value.copy(
                 modes = _appState.value.modes.map { mode ->
@@ -230,7 +238,8 @@ class GuardianViewModel : ViewModel() {
                         name = name,
                         blockedApps = blockedApps,
                         blockMode = blockMode,
-                        nfcTagId = nfcTagId
+                        nfcTagId = null,
+                        nfcTagIds = nfcTagIds
                     ) else mode
                 }
             )
@@ -273,7 +282,7 @@ class GuardianViewModel : ViewModel() {
             }
         }
 
-        AppLogger.log("MODE", "Activating: '${modeToActivate.name}' (${modeToActivate.blockMode}, ${modeToActivate.blockedApps.size} apps, nfc=${modeToActivate.nfcTagId ?: "none"}, timed=${timedUntilMillis != null})")
+        AppLogger.log("MODE", "Activating: '${modeToActivate.name}' (${modeToActivate.blockMode}, ${modeToActivate.blockedApps.size} apps, nfc=${modeToActivate.effectiveNfcTagIds.ifEmpty { listOf("any") }}, timed=${timedUntilMillis != null})")
 
         viewModelScope.launch {
             val newTimedDeactivations = if (timedUntilMillis != null) {
@@ -427,7 +436,10 @@ class GuardianViewModel : ViewModel() {
             _appState.value = _appState.value.copy(
                 nfcTags = _appState.value.nfcTags.filter { it.id != tagId },
                 modes = _appState.value.modes.map { mode ->
-                    if (mode.nfcTagId == tagId) mode.copy(nfcTagId = null) else mode
+                    if (mode.effectiveNfcTagIds.contains(tagId)) mode.copy(
+                        nfcTagId = null,
+                        nfcTagIds = mode.effectiveNfcTagIds.filter { it != tagId }
+                    ) else mode
                 }
             )
             saveState()
@@ -460,8 +472,10 @@ class GuardianViewModel : ViewModel() {
                 val mode = _appState.value.modes.find { it.id == modeId }
 
                 if (mode != null) {
-                    if (mode.nfcTagId != null) {
-                        if (mode.nfcTagId == tagId) {
+                    val tagIds = mode.effectiveNfcTagIds
+                    if (tagIds.isNotEmpty()) {
+                        // Specific tags required — check if scanned tag is in the list
+                        if (tagIds.contains(tagId)) {
                             modesToDeactivate.add(modeId)
 
                             _appState.value.schedules.forEach { schedule ->
@@ -479,7 +493,7 @@ class GuardianViewModel : ViewModel() {
                             }
                         }
                     } else {
-                        // No NFC tag linked — any tag can unlock this mode
+                        // No NFC tags linked — any tag can unlock this mode
                         modesToDeactivate.add(modeId)
 
                         _appState.value.schedules.forEach { schedule ->
@@ -533,8 +547,8 @@ class GuardianViewModel : ViewModel() {
                 val mergedModes = _appState.value.modes.map { existing ->
                     val imported = importModeMap[existing.id]
                     if (imported != null) {
-                        // Restore NFC tag link from import
-                        existing.copy(nfcTagId = imported.nfcTagId)
+                        // Restore NFC tag links from import
+                        existing.copy(nfcTagId = null, nfcTagIds = imported.effectiveNfcTagIds)
                     } else existing
                 } + data.modes.filter { it.id !in existingModeIds }
 
@@ -573,12 +587,13 @@ class GuardianViewModel : ViewModel() {
                 )
             }
 
-            // FIX #11: Clean up orphaned nfcTagId references after import
+            // FIX #11: Clean up orphaned nfcTagIds references after import
             val validTagIds = _appState.value.nfcTags.map { it.id }.toSet()
             _appState.value = _appState.value.copy(
                 modes = _appState.value.modes.map { mode ->
-                    if (mode.nfcTagId != null && mode.nfcTagId !in validTagIds) {
-                        mode.copy(nfcTagId = null)
+                    val cleaned = mode.effectiveNfcTagIds.filter { it in validTagIds }
+                    if (cleaned != mode.effectiveNfcTagIds) {
+                        mode.copy(nfcTagId = null, nfcTagIds = cleaned)
                     } else mode
                 }
             )
