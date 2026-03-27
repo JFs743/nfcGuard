@@ -207,25 +207,43 @@ class GuardianViewModel : ViewModel() {
                     }
                 }
                 AppLogger.log("SERVICE", "Starting ALLOW_SELECTED with ${allAllowedApps.size} allowed apps")
-                BlockerService.start(context, allAllowedApps, BlockMode.ALLOW_SELECTED, activeModes.map { it.id }.toSet(),
+                BlockerService.start(
+                    context,
+                    allAllowedApps,
+                    BlockMode.ALLOW_SELECTED,
+                    activeModes.map { it.id }.toSet(),
                     manuallyActivatedModeIds = _appState.value.manuallyActivatedModes,
                     timedModeDeactivations = _appState.value.timedModeDeactivations,
-                    modeNames = modeNamesMap)
+                    modeNames = modeNamesMap,
+                    timedModeReactivations = _appState.value.timedModeReactivations
+                )
             } else {
                 val allBlockedApps = mutableSetOf<String>()
                 activeModes.forEach { mode ->
                     allBlockedApps.addAll(mode.blockedApps)
                 }
                 AppLogger.log("SERVICE", "Starting BLOCK_SELECTED with ${allBlockedApps.size} blocked apps")
-                BlockerService.start(context, allBlockedApps, BlockMode.BLOCK_SELECTED, activeModes.map { it.id }.toSet(),
+                BlockerService.start(
+                    context,
+                    allBlockedApps,
+                    BlockMode.BLOCK_SELECTED,
+                    activeModes.map { it.id }.toSet(),
                     manuallyActivatedModeIds = _appState.value.manuallyActivatedModes,
                     timedModeDeactivations = _appState.value.timedModeDeactivations,
-                    modeNames = modeNamesMap)
+                    modeNames = modeNamesMap,
+                    timedModeReactivations = _appState.value.timedModeReactivations
+                )
             }
         } else {
             AppLogger.log("SERVICE", "No active modes — starting empty service for schedule monitoring")
             // Keep service running even with no active modes to handle schedules
-            BlockerService.start(context, emptySet(), BlockMode.BLOCK_SELECTED, emptySet())
+            BlockerService.start(
+                context,
+                emptySet(),
+                BlockMode.BLOCK_SELECTED,
+                emptySet(),
+                timedModeReactivations = _appState.value.timedModeReactivations
+            )
         }
     }
 
